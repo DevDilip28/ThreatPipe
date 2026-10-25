@@ -1,0 +1,84 @@
+# ThreatPipe v2 — Configuration
+# ================================
+# Ithe sagle paths, model params, thresholds eka jaagi.
+# SIFT workstation la hya paths match karayla update kara.
+
+# ─── LLM ──────────────────────────────────────────────────────────────────────
+# Legacy single-provider block (kept for backward compat; router is preferred).
+llm:
+  provider: "router"               # "mistral" | "local_llama" | "router"
+  model: "mistral-small-latest"
+  temperature: 0.0
+  max_tokens: 4096
+  # local llama path (use if provider = local_llama)
+  llama_model_path: "/opt/models/qwen3.5-4b.gguf"
+
+# ─── LLM routing (multi-provider, free-tier aware) ───────────────────────────
+# Limits are configurable here because free-tier quotas change.
+# Env overrides: JARVISLABS_RPM/RPD/TPM/TPD, NVIDIA_RPM/RPD/TPM/TPD,
+# GROQ_RPM/..., LLM_ROUTING_MODE, LLM_FORCE_PROVIDER, LLM_DISABLE_*.
+llm_routing:
+  mode: "HYBRID"   # QUALITY_FIRST | FREE_QUOTA_FIRST | HYBRID
+  call_delay_s: 5.0   # throttle every provider call to reduce rate-limit blocking (env LLM_CALL_DELAY_S overrides)
+  # Optional: route every task to one provider (env LLM_FORCE_PROVIDER overrides).
+  # force_provider: "jarvislabs"
+  fallback_chains:
+    CODING: ["jarvislabs", "nvidia", "groq", "opencode", "local", "ollama"]
+    COMPLEX_REASONING: ["jarvislabs", "nvidia", "groq", "opencode", "gemini", "local", "ollama"]
+    TOOL_CALLING: ["jarvislabs", "groq", "nvidia", "opencode", "gemini", "local"]
+    NORMAL: ["jarvislabs", "groq", "nvidia", "opencode", "gemini", "local", "ollama"]
+    SIMPLE: ["jarvislabs", "groq", "opencode", "local", "nvidia", "cloudflare", "ollama"]
+    BULK_PROCESSING: ["jarvislabs", "opencode", "groq", "nvidia", "local", "ollama", "cloudflare"]
+    LONG_CONTEXT: ["jarvislabs", "gemini", "nvidia", "groq", "opencode", "local"]
+  providers:
+    jarvislabs: {priority: 5, requests_per_minute: 60, requests_per_day: 5000, tokens_per_minute: 200000, tokens_per_day: 5000000}
+    nvidia: {priority: 10, requests_per_minute: 40, requests_per_day: 1000, tokens_per_minute: 60000, tokens_per_day: 500000}
+    groq: {priority: 20, requests_per_minute: 30, requests_per_day: 5000, tokens_per_minute: 60000, tokens_per_day: 500000}
+    local: {priority: 30, requests_per_minute: 120, requests_per_day: 100000, tokens_per_minute: 200000, tokens_per_day: 10000000}
+    ollama: {priority: 40}
+    opencode: {priority: 50, requests_per_minute: 30, requests_per_day: 1000, tokens_per_minute: 60000, tokens_per_day: 500000}
+    gemini: {priority: 60}
+    cloudflare: {priority: 70}
+
+# ─── Evidence Graph ───────────────────────────────────────────────────────────
+graph:
+  db_path: "./threatpipe_evidence.db"
+  # Max nodes per session before we warn about graph size
+  max_nodes_warn: 500
+
+# ─── Investigation loop ───────────────────────────────────────────────────────
+agent:
+  max_cycles: 3        # max self-correction retries per trigger
+  confidence_threshold: 0.7   # below this = AMBIGUOUS → escalate
+
+# ─── SIFT tool paths ──────────────────────────────────────────────────────────
+# On stock SIFT these are already in PATH. Override here if needed.
+tools:
+  strings:      "strings"
+  file:         "file"
+  fls:          "fls"
+  icat:         "icat"
+  md5sum:       "md5sum"
+  sha256sum:    "sha256sum"
+  mmls:         "mmls"
+  fsstat:       "fsstat"
+  log2timeline: "log2timeline"
+  mactime:      "mactime"
+  volatility:   "vol"       # may be "volatility" or "vol3" depending on SIFT version
+  grep:         "grep"
+
+# ─── Web root (for web log investigations) ───────────────────────────────────
+web_root: "/tmp/threatpipe_evidence/www"
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  log_dir: "./logs"
+  # console_level: INFO shows verdicts + tool results on terminal
+  # file gets DEBUG always (everything)
+  console_level: "INFO"
+
+# ─── MCP Server (Phase 4) ────────────────────────────────────────────────────
+mcp:
+  enabled: false       # enable when Phase 4 ready
+  host: "127.0.0.1"
+  port: 9000
